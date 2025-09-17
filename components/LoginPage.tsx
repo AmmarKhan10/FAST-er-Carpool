@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { auth, db } from '../firebase-config';
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword, AuthErrorCodes } from 'firebase/auth';
+// Fix: Removed unused `AuthErrorCodes` import as it's not needed and was causing an error.
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
 
 const LoginPage: React.FC = () => {
@@ -24,8 +25,8 @@ const LoginPage: React.FC = () => {
       await signInWithEmailAndPassword(auth, email, password);
     } catch (signInError: any) {
       // If sign in fails because user not found, create a new account
-      // FIX: Corrected typo in Firebase AuthErrorCodes enum member from `INVALID_credential` to `INVALID_CREDENTIAL`.
-      if (signInError.code === AuthErrorCodes.INVALID_CREDENTIAL) {
+      // Fix: `AuthErrorCodes.INVALID_CREDENTIAL` does not exist. Use the string literal 'auth/invalid-credential' which covers user-not-found and wrong-password to prevent account enumeration.
+      if (signInError.code === 'auth/invalid-credential') {
         try {
           const userCredential = await createUserWithEmailAndPassword(auth, email, password);
           const user = userCredential.user;

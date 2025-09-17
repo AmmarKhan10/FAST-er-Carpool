@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
 import { collection, onSnapshot, addDoc, updateDoc, doc, deleteDoc, query, where, serverTimestamp, orderBy } from 'firebase/firestore';
 import { auth, db } from './firebase-config';
@@ -18,10 +18,21 @@ const App: React.FC = () => {
 
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [carpools, setCarpools] = useState<Carpool[]>([]);
-  const [bookings, setBookings] = useState<BookingRequest[]>([]);
+  
+  // State is now split for rider and driver bookings to avoid 'Filter.or'
+  const [riderBookings, setRiderBookings] = useState<BookingRequest[]>([]);
+  const [driverBookings, setDriverBookings] = useState<BookingRequest[]>([]);
+
   const [messages, setMessages] = useState<Message[]>([]);
   
   const [activeChat, setActiveChat] = useState<{ carpoolId: string, otherUserId: string } | null>(null);
+
+  // Memoize the combined list of bookings
+  const bookings = useMemo(() => {
+    const allBookings = [...riderBookings, ...driverBookings];
+    // Deduplicate based on ID in case a user is a rider on their own carpool (edge case)
+    return Array.from(new Map(allBookings.map(item => [item.id, item])).values());
+  }, [riderBookings, driverBookings]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -52,25 +63,40 @@ const App: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
+  const myCarpool = useMemo(() => carpools.find(c => c.driverId === currentUser?.id), [carpools, currentUser]);
+
+  // Listener for bookings where the current user is the RIDER
   useEffect(() => {
     if (!currentUser) {
-      setBookings([]);
-      return;
+        setRiderBookings([]);
+        return;
     }
-    // Listen for bookings where current user is the rider OR the driver
-    const myCarpool = carpools.find(c => c.driverId === currentUser.id);
-    const bookingsQuery = myCarpool 
-      ? query(collection(db, 'bookings'), where('riderId', '==', currentUser.id), where('carpoolId', '==', myCarpool.id))
-      : query(collection(db, 'bookings'), where('riderId', '==', currentUser.id));
-
-    // A more robust query would require composite indexes in Firestore
-    const unsubscribe = onSnapshot(collection(db, 'bookings'), (snapshot) => {
+    const riderQuery = query(collection(db, 'bookings'), where('riderId', '==', currentUser.id));
+    const unsubscribe = onSnapshot(riderQuery, (snapshot) => {
         const bookingsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BookingRequest));
-        setBookings(bookingsData);
+        setRiderBookings(bookingsData);
+    }, (error) => {
+        console.error("Firestore rider bookings subscription error: ", error);
     });
-
     return () => unsubscribe();
-  }, [currentUser, carpools]);
+  }, [currentUser]);
+
+  // Listener for bookings related to the user's carpool (as DRIVER)
+  useEffect(() => {
+    if (!myCarpool) {
+        setDriverBookings([]);
+        return;
+    }
+    const driverQuery = query(collection(db, 'bookings'), where('carpoolId', '==', myCarpool.id));
+    const unsubscribe = onSnapshot(driverQuery, (snapshot) => {
+        const bookingsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BookingRequest));
+        setDriverBookings(bookingsData);
+    }, (error) => {
+        console.error("Firestore driver bookings subscription error: ", error);
+    });
+    return () => unsubscribe();
+  }, [myCarpool]);
+
 
   useEffect(() => {
     if (!activeChat || !currentUser) {
@@ -101,12 +127,46 @@ const App: React.FC = () => {
   }, []);
 
   const addCarpool = useCallback(async (newCarpool: Omit<Carpool, 'id'>) => {
-    await addDoc(collection(db, 'carpools'), newCarpool);
+    // Sanitize the object to ensure it's a plain JS object and prevent circular structure errors.
+    const dataToAdd = {
+      driverId: newCarpool.driverId,
+      driverName: newCarpool.driverName,
+      carModel: newCarpool.carModel,
+      departureLocation: newCarpool.departureLocation,
+      schedule: newCarpool.schedule.map(s => ({
+          day: s.day,
+          departureTime: s.departureTime,
+          returnTime: s.returnTime,
+          availableSeats: s.availableSeats
+      }))
+    };
+    await addDoc(collection(db, 'carpools'), dataToAdd);
   }, []);
 
   const updateCarpool = useCallback(async (updatedCarpool: Carpool) => {
-    const carpoolDoc = doc(db, 'carpools', updatedCarpool.id);
-    await updateDoc(carpoolDoc, { ...updatedCarpool });
+    const carpoolId = updatedCarpool.id;
+    if (!carpoolId) {
+        console.error("Cannot update carpool without an ID.");
+        return;
+    }
+    
+    // Explicitly create a new, clean data object to prevent circular structure errors.
+    // This rebuilds the schedule array to ensure it only contains plain data.
+    const dataToUpdate = {
+        driverId: updatedCarpool.driverId,
+        driverName: updatedCarpool.driverName,
+        carModel: updatedCarpool.carModel,
+        departureLocation: updatedCarpool.departureLocation,
+        schedule: updatedCarpool.schedule.map(s => ({
+            day: s.day,
+            departureTime: s.departureTime,
+            returnTime: s.returnTime,
+            availableSeats: s.availableSeats
+        }))
+    };
+    
+    const carpoolDoc = doc(db, 'carpools', carpoolId);
+    await updateDoc(carpoolDoc, dataToUpdate);
   }, []);
 
   const handleDeleteCarpool = useCallback(async (carpoolId: string) => {
@@ -138,16 +198,45 @@ const App: React.FC = () => {
     if (status === 'approved') {
         const carpool = carpools.find(c => c.id === booking.carpoolId);
         if (carpool) {
+            // Rebuild the schedule with plain objects to prevent circular structure errors.
             const newSchedule = carpool.schedule.map(s => {
+                const plainScheduleItem = {
+                    day: s.day,
+                    departureTime: s.departureTime,
+                    returnTime: s.returnTime,
+                    availableSeats: s.availableSeats
+                };
                 if (s.day === booking.day) {
-                    return { ...s, availableSeats: Math.max(0, s.availableSeats - 1) };
+                    plainScheduleItem.availableSeats = Math.max(0, s.availableSeats - 1);
                 }
-                return s;
+                return plainScheduleItem;
             });
             await updateDoc(doc(db, 'carpools', carpool.id), { schedule: newSchedule });
         }
     }
   }, [bookings, carpools]);
+
+  const cancelBooking = useCallback(async (bookingId: string) => {
+    const booking = riderBookings.find(b => b.id === bookingId);
+    if (!booking) return;
+
+    // If the booking was approved, free up the seat
+    if (booking.status === 'approved') {
+      const carpool = carpools.find(c => c.id === booking.carpoolId);
+      if (carpool) {
+        const newSchedule = carpool.schedule.map(s => {
+          if (s.day === booking.day) {
+            return { ...s, availableSeats: s.availableSeats + 1 };
+          }
+          return s;
+        });
+        await updateDoc(doc(db, 'carpools', carpool.id), { schedule: newSchedule });
+      }
+    }
+
+    // Delete the booking document
+    await deleteDoc(doc(db, 'bookings', bookingId));
+  }, [riderBookings, carpools]);
 
   const handleStartChat = useCallback((carpoolId: string, otherUserId: string) => {
     setActiveChat({ carpoolId, otherUserId });
@@ -173,17 +262,13 @@ const App: React.FC = () => {
     return <LoginPage />;
   }
   
-  const myCarpool = carpools.find(c => c.driverId === currentUser.id);
-  const myBookingsAsRider = bookings.filter(b => b.riderId === currentUser.id);
-  const myBookingsAsDriver = myCarpool ? bookings.filter(b => b.carpoolId === myCarpool.id) : [];
-
   const otherChatUser = activeChat ? users.find(u => u.id === activeChat.otherUserId) : null;
 
   return (
     <div className="min-h-screen bg-gray-50 font-sans">
       <Header currentView={view} onViewChange={setView} onLogout={handleLogout} />
       <main className="container mx-auto p-4 md:p-8">
-        {view === View.FIND && <FindRide carpools={carpools} onBook={addBooking} bookings={myBookingsAsRider} currentUser={currentUser} onStartChat={handleStartChat} />}
+        {view === View.FIND && <FindRide carpools={carpools} onBook={addBooking} bookings={riderBookings} currentUser={currentUser} onStartChat={handleStartChat} onCancelBooking={cancelBooking} />}
         {view === View.OFFER && (
           <OfferRide 
             myCarpool={myCarpool} 
@@ -191,7 +276,7 @@ const App: React.FC = () => {
             onAddCarpool={addCarpool} 
             onUpdateCarpool={updateCarpool} 
             onDeleteCarpool={handleDeleteCarpool}
-            bookingRequests={myBookingsAsDriver}
+            bookingRequests={driverBookings}
             onUpdateBookingStatus={updateBookingStatus}
             onStartChat={handleStartChat}
           />
