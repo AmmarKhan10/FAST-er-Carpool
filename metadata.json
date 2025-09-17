@@ -1,0 +1,5 @@
+{
+  "name": "FAST Carpool Connect",
+  "description": "A web application to help students of FAST University find and offer carpools. Users can post weekly recurring ride schedules, manage available seats, and handle booking requests.",
+  "requestFramePermissions": []
+}
