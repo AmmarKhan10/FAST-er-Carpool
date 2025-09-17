@@ -1,20 +1,20 @@
 import React, { useState } from 'react';
-import { Carpool, BookingRequest, User } from '../types';
+import { Carpool, BookingRequest, UserProfile } from '../types';
 import CarpoolCard from './CarpoolCard';
 import BookingModal from './BookingModal';
 
 interface FindRideProps {
   carpools: Carpool[];
   bookings: BookingRequest[];
-  onBook: (carpoolId: number, day: string) => void;
-  currentUser: User;
-  onStartChat: (carpoolId: number, otherUserId: number) => void;
+  onBook: (carpoolId: string, day: string) => void;
+  currentUser: UserProfile;
+  onStartChat: (carpoolId: string, otherUserId: string) => void;
 }
 
 const FindRide: React.FC<FindRideProps> = ({ carpools, onBook, bookings, currentUser, onStartChat }) => {
-  const [selectedCarpool, setSelectedCarpool] = useState<{ carpoolId: number; day: string } | null>(null);
+  const [selectedCarpool, setSelectedCarpool] = useState<{ carpoolId: string; day: string } | null>(null);
 
-  const handleBookClick = (carpoolId: number, day: string) => {
+  const handleBookClick = (carpoolId: string, day: string) => {
     setSelectedCarpool({ carpoolId, day });
   };
 

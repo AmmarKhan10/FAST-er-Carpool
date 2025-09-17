@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { Carpool, DaySchedule, User } from '../types';
+import { Carpool, DaySchedule, UserProfile } from '../types';
 
 interface ScheduleFormProps {
   carpool?: Carpool;
-  currentUser: User;
+  currentUser: UserProfile;
   onSave: (carpool: any) => void;
   onCancel: () => void;
 }

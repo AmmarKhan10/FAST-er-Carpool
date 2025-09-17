@@ -3,8 +3,8 @@ import { BookingRequest } from '../types';
 
 interface RequestsListProps {
   requests: BookingRequest[];
-  onUpdateStatus: (bookingId: number, status: 'approved' | 'declined') => void;
-  onStartChat: (riderId: number) => void;
+  onUpdateStatus: (bookingId: string, status: 'approved' | 'declined') => void;
+  onStartChat: (riderId: string) => void;
 }
 
 const StatusBadge: React.FC<{ status: 'pending' | 'approved' | 'declined' }> = ({ status }) => {

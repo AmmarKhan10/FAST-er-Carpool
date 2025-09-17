@@ -1,20 +1,20 @@
-# 🚗 CarPool Connect
+<div align="center">
+<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+</div>
 
-> A smart, simple, and safe way to share rides.  
-> Connect drivers with passengers, save fuel, reduce traffic, and go green 🌱
+# Run and deploy your AI Studio app
 
----
+This contains everything you need to run your app locally.
 
-## 📖 About the Project
-CarPool Connect is a **carpooling platform** where drivers can post rides and passengers can search, book, and share trips.  
-It helps reduce fuel costs 💸, minimize traffic 🚦, and promote eco-friendly transport 🌍.
+View your app in AI Studio: https://ai.studio/apps/drive/1czp1f11XICheRSMT0m3_laoxsajPDYny
 
-**Key Features:**
-- 👤 User accounts (Driver / Passenger)
-- 📅 Post and search rides by date, origin, destination
-- 💺 Seat availability & booking system
-- 🔒 Secure authentication
-- 📊 Database-backed 
+## Run Locally
 
----
+**Prerequisites:**  Node.js
 
+
+1. Install dependencies:
+   `npm install`
+2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
+3. Run the app:
+   `npm run dev`

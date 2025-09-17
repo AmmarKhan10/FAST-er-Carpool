@@ -1,17 +1,19 @@
-export interface User {
-  id: number;
+import { Timestamp } from 'firebase/firestore';
+
+export interface UserProfile {
+  id: string; // Corresponds to Firebase Auth UID
   name: string;
   email: string;
   phoneNumber: string;
 }
 
 export interface Message {
-  id: number;
-  carpoolId: number;
-  senderId: number;
-  receiverId: number;
+  id: string;
+  carpoolId: string;
+  senderId: string;
+  receiverId: string;
   text: string;
-  timestamp: string;
+  timestamp: Timestamp;
 }
 
 export interface DaySchedule {
@@ -22,8 +24,8 @@ export interface DaySchedule {
 }
 
 export interface Carpool {
-  id: number;
-  driverId: number;
+  id: string;
+  driverId: string;
   driverName: string;
   carModel: string;
   departureLocation: string;
@@ -31,9 +33,9 @@ export interface Carpool {
 }
 
 export interface BookingRequest {
-  id: number;
-  carpoolId: number;
-  riderId: number;
+  id: string;
+  carpoolId: string;
+  riderId: string;
   riderName: string;
   day: string;
   status: 'pending' | 'approved' | 'declined';

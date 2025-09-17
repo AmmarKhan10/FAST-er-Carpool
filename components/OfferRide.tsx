@@ -1,17 +1,17 @@
 import React, { useState } from 'react';
-import { Carpool, BookingRequest, User } from '../types';
+import { Carpool, BookingRequest, UserProfile } from '../types';
 import ScheduleForm from './ScheduleForm';
 import RequestsList from './RequestsList';
 
 interface OfferRideProps {
   myCarpool: Carpool | undefined;
-  currentUser: User;
+  currentUser: UserProfile;
   onAddCarpool: (carpool: Omit<Carpool, 'id'>) => void;
   onUpdateCarpool: (carpool: Carpool) => void;
-  onDeleteCarpool: (carpoolId: number) => void;
+  onDeleteCarpool: (carpoolId: string) => void;
   bookingRequests: BookingRequest[];
-  onUpdateBookingStatus: (bookingId: number, status: 'approved' | 'declined') => void;
-  onStartChat: (carpoolId: number, otherUserId: number) => void;
+  onUpdateBookingStatus: (bookingId: string, status: 'approved' | 'declined') => void;
+  onStartChat: (carpoolId: string, otherUserId: string) => void;
 }
 
 const OfferRide: React.FC<OfferRideProps> = ({ myCarpool, currentUser, onAddCarpool, onUpdateCarpool, onDeleteCarpool, bookingRequests, onUpdateBookingStatus, onStartChat }) => {

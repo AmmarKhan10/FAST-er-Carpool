@@ -1,12 +1,12 @@
 import React from 'react';
-import { Carpool, BookingRequest, User } from '../types';
+import { Carpool, BookingRequest, UserProfile } from '../types';
 
 interface CarpoolCardProps {
   carpool: Carpool;
-  onBookClick: (carpoolId: number, day: string) => void;
+  onBookClick: (carpoolId: string, day: string) => void;
   bookings: BookingRequest[];
-  currentUser: User;
-  onStartChat: (carpoolId: number, otherUserId: number) => void;
+  currentUser: UserProfile;
+  onStartChat: (carpoolId: string, otherUserId: string) => void;
 }
 
 const CarIcon = () => (

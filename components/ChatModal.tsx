@@ -1,17 +1,31 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Message, User } from '../types';
+import { Message, UserProfile } from '../types';
+import { db } from '../firebase-config';
+import { doc, getDoc } from 'firebase/firestore';
+
 
 interface ChatModalProps {
-  currentUser: User;
-  otherUser: User;
+  currentUser: UserProfile;
+  otherUserId: string;
   messages: Message[];
   onSendMessage: (text: string) => void;
   onClose: () => void;
 }
 
-const ChatModal: React.FC<ChatModalProps> = ({ currentUser, otherUser, messages, onSendMessage, onClose }) => {
+const ChatModal: React.FC<ChatModalProps> = ({ currentUser, otherUserId, messages, onSendMessage, onClose }) => {
   const [newMessage, setNewMessage] = useState('');
+  const [otherUser, setOtherUser] = useState<UserProfile | null>(null);
   const messagesEndRef = useRef<null | HTMLDivElement>(null);
+
+  useEffect(() => {
+    const fetchOtherUser = async () => {
+        const userDoc = await getDoc(doc(db, 'users', otherUserId));
+        if (userDoc.exists()) {
+            setOtherUser({ id: userDoc.id, ...userDoc.data() } as UserProfile);
+        }
+    }
+    fetchOtherUser();
+  }, [otherUserId]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -32,12 +46,17 @@ const ChatModal: React.FC<ChatModalProps> = ({ currentUser, otherUser, messages,
       handleSend();
     }
   }
+  
+  const formatTimestamp = (timestamp: any) => {
+      if (!timestamp) return '';
+      return new Date(timestamp.seconds * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
       <div className="bg-white rounded-lg shadow-xl w-full max-w-lg h-[70vh] flex flex-col m-4">
         <header className="flex items-center justify-between p-4 border-b">
-          <h2 className="text-xl font-bold text-gray-800">Chat with {otherUser.name}</h2>
+          <h2 className="text-xl font-bold text-gray-800">Chat with {otherUser?.name || '...'}</h2>
           <button onClick={onClose} className="text-gray-500 text-2xl font-bold hover:text-gray-800">&times;</button>
         </header>
         
@@ -46,7 +65,7 @@ const ChatModal: React.FC<ChatModalProps> = ({ currentUser, otherUser, messages,
             <div key={msg.id} className={`flex items-end ${msg.senderId === currentUser.id ? 'justify-end' : 'justify-start'}`}>
               <div className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg shadow ${msg.senderId === currentUser.id ? 'bg-blue-500 text-white' : 'bg-white text-gray-800'}`}>
                 <p className="whitespace-pre-wrap">{msg.text}</p>
-                <p className={`text-xs mt-1 text-right ${msg.senderId === currentUser.id ? 'text-blue-200' : 'text-gray-400'}`}>{msg.timestamp}</p>
+                <p className={`text-xs mt-1 text-right ${msg.senderId === currentUser.id ? 'text-blue-200' : 'text-gray-400'}`}>{formatTimestamp(msg.timestamp)}</p>
               </div>
             </div>
           ))}

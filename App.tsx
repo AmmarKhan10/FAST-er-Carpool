@@ -1,113 +1,176 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
+import { onAuthStateChanged, User as FirebaseUser } from 'firebase/auth';
+import { collection, onSnapshot, addDoc, updateDoc, doc, deleteDoc, query, where, serverTimestamp, orderBy } from 'firebase/firestore';
+import { auth, db } from './firebase-config';
+
 import Header from './components/Header';
 import FindRide from './components/FindRide';
 import OfferRide from './components/OfferRide';
 import LoginPage from './components/LoginPage';
 import ChatModal from './components/ChatModal';
-import { User, Message, Carpool, BookingRequest, View } from './types';
-import { initialCarpools, initialBookings, initialUsers, initialMessages } from './data';
+import { UserProfile, Message, Carpool, BookingRequest, View } from './types';
 
 const App: React.FC = () => {
   const [view, setView] = useState<View>(View.FIND);
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [users, setUsers] = useState<User[]>(initialUsers);
-  const [carpools, setCarpools] = useState<Carpool[]>(initialCarpools);
-  const [bookings, setBookings] = useState<BookingRequest[]>(initialBookings);
-  const [messages, setMessages] = useState<Message[]>(initialMessages);
-  const [activeChat, setActiveChat] = useState<{ carpoolId: number, otherUserId: number } | null>(null);
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
+  const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
 
-  const handleLogin = useCallback((email: string, phone: string) => {
-    let user = users.find(u => u.email.toLowerCase() === email.toLowerCase());
-    if (user) {
-      setCurrentUser(user);
-    } else {
-      const name = email.split('@')[0].replace(/\./g, ' ').replace(/(?:^|\s)\S/g, (a) => a.toUpperCase());
-      const newUser: User = { id: Date.now(), name, email, phoneNumber: phone };
-      setUsers(prev => [...prev, newUser]);
-      setCurrentUser(newUser);
+  const [users, setUsers] = useState<UserProfile[]>([]);
+  const [carpools, setCarpools] = useState<Carpool[]>([]);
+  const [bookings, setBookings] = useState<BookingRequest[]>([]);
+  const [messages, setMessages] = useState<Message[]>([]);
+  
+  const [activeChat, setActiveChat] = useState<{ carpoolId: string, otherUserId: string } | null>(null);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      setFirebaseUser(user);
+      if (user) {
+        // Listen for this user's profile document in Firestore
+        const userDocRef = doc(db, 'users', user.uid);
+        onSnapshot(userDocRef, (doc) => {
+          if (doc.exists()) {
+            setCurrentUser({ id: doc.id, ...doc.data() } as UserProfile);
+          }
+        });
+      } else {
+        setCurrentUser(null);
+      }
+      setAuthLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    // Listen for all carpools
+    const q = query(collection(db, 'carpools'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const carpoolsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Carpool));
+      setCarpools(carpoolsData);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (!currentUser) {
+      setBookings([]);
+      return;
     }
-  }, [users]);
+    // Listen for bookings where current user is the rider OR the driver
+    const myCarpool = carpools.find(c => c.driverId === currentUser.id);
+    const bookingsQuery = myCarpool 
+      ? query(collection(db, 'bookings'), where('riderId', '==', currentUser.id), where('carpoolId', '==', myCarpool.id))
+      : query(collection(db, 'bookings'), where('riderId', '==', currentUser.id));
+
+    // A more robust query would require composite indexes in Firestore
+    const unsubscribe = onSnapshot(collection(db, 'bookings'), (snapshot) => {
+        const bookingsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BookingRequest));
+        setBookings(bookingsData);
+    });
+
+    return () => unsubscribe();
+  }, [currentUser, carpools]);
+
+  useEffect(() => {
+    if (!activeChat || !currentUser) {
+        setMessages([]);
+        return;
+    };
+    
+    const messagesQuery = query(
+        collection(db, 'messages'),
+        where('carpoolId', '==', activeChat.carpoolId),
+        orderBy('timestamp', 'asc')
+    );
+
+    const unsubscribe = onSnapshot(messagesQuery, (snapshot) => {
+        const messagesData = snapshot.docs
+            .map(doc => ({ id: doc.id, ...doc.data() } as Message))
+            .filter(m => (m.senderId === currentUser.id && m.receiverId === activeChat.otherUserId) || (m.senderId === activeChat.otherUserId && m.receiverId === currentUser.id));
+        setMessages(messagesData);
+    });
+
+    return () => unsubscribe();
+  }, [activeChat, currentUser]);
+  
 
   const handleLogout = useCallback(() => {
-    setCurrentUser(null);
+    auth.signOut();
     setView(View.FIND);
   }, []);
 
-  const addCarpool = useCallback((newCarpool: Omit<Carpool, 'id'>) => {
-    setCarpools(prev => [
-      ...prev,
-      {
-        ...newCarpool,
-        id: Date.now(),
-      },
-    ]);
+  const addCarpool = useCallback(async (newCarpool: Omit<Carpool, 'id'>) => {
+    await addDoc(collection(db, 'carpools'), newCarpool);
   }, []);
 
-  const updateCarpool = useCallback((updatedCarpool: Carpool) => {
-    setCarpools(prev => prev.map(c => c.id === updatedCarpool.id ? updatedCarpool : c));
+  const updateCarpool = useCallback(async (updatedCarpool: Carpool) => {
+    const carpoolDoc = doc(db, 'carpools', updatedCarpool.id);
+    await updateDoc(carpoolDoc, { ...updatedCarpool });
   }, []);
 
-  const handleDeleteCarpool = useCallback((carpoolId: number) => {
+  const handleDeleteCarpool = useCallback(async (carpoolId: string) => {
     if (window.confirm('Are you sure you want to delete your carpool listing? This action cannot be undone.')) {
-        setCarpools(prev => prev.filter(c => c.id !== carpoolId));
-        setBookings(prev => prev.filter(b => b.carpoolId !== carpoolId));
+        await deleteDoc(doc(db, 'carpools', carpoolId));
+        // You might also want to delete related bookings
     }
   }, []);
 
-  const addBooking = useCallback((carpoolId: number, day: string) => {
+  const addBooking = useCallback(async (carpoolId: string, day: string) => {
     if (!currentUser) return;
-    const newBooking: BookingRequest = {
-      id: Date.now(),
+    const driver = carpools.find(c => c.id === carpoolId)?.driverName;
+    const newBooking = {
       carpoolId,
       riderId: currentUser.id,
       riderName: currentUser.name,
       day,
       status: 'pending',
     };
-    setBookings(prev => [...prev, newBooking]);
-  }, [currentUser]);
+    await addDoc(collection(db, 'bookings'), newBooking);
+  }, [currentUser, carpools]);
 
-  const updateBookingStatus = useCallback((bookingId: number, status: 'approved' | 'declined') => {
+  const updateBookingStatus = useCallback(async (bookingId: string, status: 'approved' | 'declined') => {
     const booking = bookings.find(b => b.id === bookingId);
     if (!booking) return;
 
-    setBookings(prev => prev.map(b => b.id === bookingId ? { ...b, status } : b));
+    await updateDoc(doc(db, 'bookings', bookingId), { status });
     
     if (status === 'approved') {
-        setCarpools(prevCarpools => prevCarpools.map(carpool => {
-            if (carpool.id === booking.carpoolId) {
-                const newSchedule = carpool.schedule.map(s => {
-                    if (s.day === booking.day) {
-                        return { ...s, availableSeats: Math.max(0, s.availableSeats - 1) };
-                    }
-                    return s;
-                });
-                return { ...carpool, schedule: newSchedule };
-            }
-            return carpool;
-        }));
+        const carpool = carpools.find(c => c.id === booking.carpoolId);
+        if (carpool) {
+            const newSchedule = carpool.schedule.map(s => {
+                if (s.day === booking.day) {
+                    return { ...s, availableSeats: Math.max(0, s.availableSeats - 1) };
+                }
+                return s;
+            });
+            await updateDoc(doc(db, 'carpools', carpool.id), { schedule: newSchedule });
+        }
     }
-  }, [bookings]);
+  }, [bookings, carpools]);
 
-  const handleStartChat = useCallback((carpoolId: number, otherUserId: number) => {
+  const handleStartChat = useCallback((carpoolId: string, otherUserId: string) => {
     setActiveChat({ carpoolId, otherUserId });
   }, []);
 
-  const handleSendMessage = useCallback((text: string) => {
+  const handleSendMessage = useCallback(async (text: string) => {
     if (!currentUser || !activeChat) return;
-    const newMessage: Message = {
-        id: Date.now(),
+    const newMessage = {
         carpoolId: activeChat.carpoolId,
         senderId: currentUser.id,
         receiverId: activeChat.otherUserId,
         text,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        timestamp: serverTimestamp(),
     };
-    setMessages(prev => [...prev, newMessage]);
+    await addDoc(collection(db, 'messages'), newMessage);
   }, [currentUser, activeChat]);
 
-  if (!currentUser) {
-    return <LoginPage onLogin={handleLogin} />;
+  if (authLoading) {
+    return <div className="min-h-screen flex items-center justify-center">Loading...</div>;
+  }
+
+  if (!currentUser || !firebaseUser) {
+    return <LoginPage />;
   }
   
   const myCarpool = carpools.find(c => c.driverId === currentUser.id);
@@ -134,11 +197,11 @@ const App: React.FC = () => {
           />
         )}
       </main>
-      {activeChat && otherChatUser && (
+      {activeChat && currentUser && (
           <ChatModal 
             currentUser={currentUser}
-            otherUser={otherChatUser}
-            messages={messages.filter(m => m.carpoolId === activeChat.carpoolId && ((m.senderId === currentUser.id && m.receiverId === activeChat.otherUserId) || (m.senderId === activeChat.otherUserId && m.receiverId === currentUser.id)))}
+            otherUserId={activeChat.otherUserId}
+            messages={messages}
             onSendMessage={handleSendMessage}
             onClose={() => setActiveChat(null)}
           />
