@@ -37,7 +37,17 @@ const OfferRide: React.FC<OfferRideProps> = ({ myCarpool, currentUser, onAddCarp
   }
 
   const handleSeatsChange = (day: string, newSeats: number) => {
-    const updatedSchedule = myCarpool.schedule.map(s => s.day === day ? { ...s, availableSeats: newSeats } : s);
+    // Rebuild the schedule with plain objects to avoid passing complex state objects.
+    const updatedSchedule = myCarpool.schedule.map(s => ({
+        day: s.day,
+        departureTime: s.departureTime,
+        returnTime: s.returnTime,
+        // Update seats for the correct day, ensuring it's not negative.
+        availableSeats: s.day === day ? Math.max(0, newSeats) : s.availableSeats,
+    }));
+    // Pass a new carpool object to the update function.
+    // The parent's update function is already written defensively to sanitize this,
+    // but it's good practice to pass clean data.
     onUpdateCarpool({ ...myCarpool, schedule: updatedSchedule });
   };
 

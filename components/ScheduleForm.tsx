@@ -21,9 +21,15 @@ const ScheduleForm: React.FC<ScheduleFormProps> = ({ carpool, currentUser, onSav
   const [schedule, setSchedule] = useState<DaySchedule[]>(initialSchedule);
 
   const handleScheduleChange = <T,>(index: number, field: keyof DaySchedule, value: T) => {
-    const newSchedule = [...schedule];
-    (newSchedule[index] as any)[field] = value;
-    setSchedule(newSchedule);
+    // Correctly update state immutably instead of mutating it.
+    setSchedule(currentSchedule => 
+      currentSchedule.map((item, i) => {
+        if (i === index) {
+          return { ...item, [field]: value };
+        }
+        return item;
+      })
+    );
   };
   
   const handleSubmit = (e: React.FormEvent) => {

@@ -224,11 +224,19 @@ const App: React.FC = () => {
     if (booking.status === 'approved') {
       const carpool = carpools.find(c => c.id === booking.carpoolId);
       if (carpool) {
-        const newSchedule = carpool.schedule.map(s => {
-          if (s.day === booking.day) {
-            return { ...s, availableSeats: s.availableSeats + 1 };
+        // Rebuild the schedule with plain objects to prevent circular structure errors,
+        // which can happen if we pass objects from state directly back to Firestore.
+        const newSchedule = carpool.schedule.map(daySchedule => {
+          const plainSchedule = {
+            day: daySchedule.day,
+            departureTime: daySchedule.departureTime,
+            returnTime: daySchedule.returnTime,
+            availableSeats: daySchedule.availableSeats,
+          };
+          if (daySchedule.day === booking.day) {
+            plainSchedule.availableSeats = daySchedule.availableSeats + 1;
           }
-          return s;
+          return plainSchedule;
         });
         await updateDoc(doc(db, 'carpools', carpool.id), { schedule: newSchedule });
       }
